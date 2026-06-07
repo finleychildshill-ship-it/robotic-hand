@@ -2,21 +2,23 @@
 <html>
 <head>
   <title>Hand Tracking</title>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
 </head>
 <body>
   <h2>Robotic Hand Control</h2>
   <button onclick="connectWS()">Connect to Arduino</button>
   <p id="status">Not connected</p>
-  <video id="video" autoplay playsinline style="display:none"></video>
   <canvas id="canvas" width="640" height="480"></canvas>
 
-  <script>
-    let ws;
+  <script type="module">
+    import vision from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/+esm";
 
-    function connectWS() {
+    const { HandLandmarker, FilesetResolver } = vision;
+
+    let ws;
+    let handLandmarker;
+    let video;
+
+    window.connectWS = function() {
       ws = new WebSocket('ws://localhost:8765');
       ws.onopen = () => {
         document.getElementById('status').innerText = 'Connected to Arduino!';
@@ -26,23 +28,41 @@
       };
     }
 
+    async function setup() {
+      const filesetResolver = await FilesetResolver.forVisionTasks(
+        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm"
+      );
+      handLandmarker = await HandLandmarker.createFromOptions(filesetResolver, {
+        baseOptions: {
+          modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+          delegate: "GPU"
+        },
+        numHands: 1
+      });
+
+      video = document.createElement('video');
+      video.autoplay = true;
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      video.srcObject = stream;
+      await new Promise(r => video.onloadedmetadata = r);
+      video.play();
+      detect();
+    }
+
     function getAngle(lm, tip, pip) {
       return lm[tip].y < lm[pip].y ? 180 : 0;
     }
 
-    const hands = new Hands({locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
-    hands.setOptions({ maxNumHands: 1, minDetectionConfidence: 0.7 });
-
-    hands.onResults(results => {
+    function detect() {
       const canvas = document.getElementById('canvas');
       const ctx = canvas.getContext('2d');
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(results.image, 0, 0);
+      const results = handLandmarker.detectForVideo(video, performance.now());
 
-      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-        const lm = results.multiHandLandmarks[0];
-        drawConnectors(ctx, lm, HAND_CONNECTIONS, {color:'#00FF00', lineWidth:2});
-        drawLandmarks(ctx, lm, {color:'#FF0000', lineWidth:1});
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      if (results.landmarks && results.landmarks.length > 0) {
+        const lm = results.landmarks[0];
 
         const pinky  = getAngle(lm, 20, 18);
         const ring   = getAngle(lm, 16, 14);
@@ -54,17 +74,10 @@
         const data = `${pinky},${ring},${middle},${index},${thumb},${palm}\n`;
         if (ws && ws.readyState === 1) ws.send(data);
       }
-    });
+      requestAnimationFrame(detect);
+    }
 
-    const video = document.getElementById('video');
-    navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
-      video.srcObject = stream;
-      const camera = new Camera(video, {
-        onFrame: async () => { await hands.send({image: video}); },
-        width: 640, height: 480
-      });
-      camera.start();
-    });
+    setup();
   </script>
 </body>
 </html>
