@@ -70,8 +70,8 @@
         const ring   = getAngle(lm, 16, 14);
         const middle = getAngle(lm, 12, 10);
         const index  = getAngle(lm, 8, 6);
-        const thumb  = getAngle(lm, 4, 3);
-        const palm   = 0;
+        const thumb  = getAngle(lm, 4, 2);
+        const palm = lm[4].x < lm[9].x ? 180 : 0;
 
         const data = `${pinky},${ring},${middle},${index},${thumb},${palm}\n`;
         if (ws && ws.readyState === 1) ws.send(data);
