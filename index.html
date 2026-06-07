@@ -8,19 +8,22 @@
 </head>
 <body>
   <h2>Robotic Hand Control</h2>
-  <button onclick="connectSerial()">Connect to Arduino</button>
+  <button onclick="connectWS()">Connect to Arduino</button>
   <p id="status">Not connected</p>
   <video id="video" autoplay playsinline style="display:none"></video>
   <canvas id="canvas" width="640" height="480"></canvas>
 
   <script>
-    let writer;
+    let ws;
 
-    async function connectSerial() {
-      const port = await navigator.serial.requestPort();
-      await port.open({ baudRate: 9600 });
-      writer = port.writable.getWriter();
-      document.getElementById('status').innerText = 'Connected to Arduino!';
+    function connectWS() {
+      ws = new WebSocket('ws://localhost:8765');
+      ws.onopen = () => {
+        document.getElementById('status').innerText = 'Connected to Arduino!';
+      };
+      ws.onerror = () => {
+        document.getElementById('status').innerText = 'Connection failed!';
+      };
     }
 
     function getAngle(lm, tip, pip) {
@@ -49,7 +52,7 @@
         const palm   = 0;
 
         const data = `${pinky},${ring},${middle},${index},${thumb},${palm}\n`;
-        if (writer) writer.write(new TextEncoder().encode(data));
+        if (ws && ws.readyState === 1) ws.send(data);
       }
     });
 
